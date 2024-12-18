@@ -1,0 +1,8 @@
+expr = token+:ts { myAct(:ts) };
+
+token = number | sum | mult;
+sum = spaces '+' spaces { Sum() };
+mult = spaces '*' spaces { Mult() };
+number = spaces digit+ $s spaces { Const(s2i($s)) };
+digit = '0' - '9';
+spaces = ' '*;

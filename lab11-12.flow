@@ -1,0 +1,757 @@
+import lingo/pegcode/driver;
+import sys/system;
+import ds/array;
+
+Expr ::= Const, Int, Var, Value, Neg, Binary, ArrayAccess, ArrayUpdate;
+    ArrayAccess(arr: Expr, index: int);
+    ArrayUpdate(arr: Expr, index: int, value: Expr);
+    Int: (value: int);
+    Const: (value: Rat);
+    Neg: (expr: Expr);
+    Binary: (left: Expr, right: Expr, operation: BinOperations);
+
+Var: (name: string);
+
+BinOperations ::= SumOp, SubOp, MulOp, DivOp;
+    SumOp: ();
+    SubOp: ();
+    MulOp: ();
+    DivOp: ();
+
+Rat:(numerator: int, denominator: int);
+
+NAN = Rat(0, 0);
+
+PLUS_INF = Rat(1, 0);
+
+MINUS_INF = Rat(-1, 0);
+
+Program(declare: Declaration, body: Execution);
+
+Execution ::= SeqExec, IndExec, Statement, Expr, Empty;
+    SeqExec(left: Execution, right: Execution);
+    IndExec(body: [Execution]);
+    Empty();
+
+Declaration ::= SeqExecD, IndExecD, Definition, EmptyD;
+    SeqExecD(left: Declaration, right: Declaration);
+    IndExecD(left: Declaration, right: Declaration);
+    EmptyD();
+
+Definition(name: string, type: VarType);
+    VarType ::= Num, ArrNum;
+        Num();
+        ArrNum(body: VarType);
+
+Value ::= ValueArr, ValueExpr, ValueEmpty;
+    ValueArr(body: Value);
+    ValueExpr(body: Expr);
+    ValueEmpty();
+
+Statement ::= Assign, Test, Print, Iteration;
+    Assign(left: Var, right: Expr);
+    Test(body: CompareExpression);
+    Iteration(body: Execution);
+    Print(arg: Var);
+
+StatementVM ::= AssignVM, TestVM, PrintVM, GotoVM;
+    AssignVM(left: Var, right: Expr, nextLabel: int);
+    TestVM(body: CompareExpression, nextLabel: int);
+    PrintVM(arg: Var, nextLabel: int);
+    GotoVM(label: [int]);
+
+CompareExpression ::= Or, And, Not, CompareString;
+    Or(left: CompareExpression, right: CompareExpression);
+    And(left: CompareExpression, right: CompareExpression);
+    Not(body: CompareExpression);
+
+CompareString(left: Expr, right: Expr, op: CompareOp);
+    CompareOp ::= LessOp, LessOrEqualOp, MoreOp, MoreOrEqualOp, EqualOp, NotEqualOp, InvalidOp;
+        LessOp();
+        LessOrEqualOp();
+        MoreOp();
+        MoreOrEqualOp();
+        EqualOp();
+        NotEqualOp();
+        InvalidOp();
+
+// execution structs
+
+MemoryState(vars : Tree<string, InitVar>);
+State(memoryState : MemoryState, nextLabel : int);
+
+InitVar(value: VarValue, type: VarType);
+    VarValue ::= Number, ArrNumber;
+        Number(body: Rat);
+        ArrNumber(body: Tree<int, VarValue>);
+
+// parsing
+
+str2program(str : string) -> Program {
+    makeSub = \exprs: [flow] -> {
+        fold(exprs[1], exprs[0], \acc, x -> Binary(acc, x, SubOp()));
+    };
+
+    makeDiv = \exprs: [flow] -> {
+        fold(exprs[1], exprs[0], \acc, x -> Binary(acc, x, DivOp()));
+    };
+
+    makeSum = \exprs: [flow] -> {
+        fold(exprs[1], exprs[0], \acc, x -> Binary(acc, x, SumOp()));
+    };
+
+    makeMult = \exprs: [flow] -> {
+        fold(exprs[1], exprs[0], \acc, x -> Binary(acc, x, MulOp()));
+    };
+
+    makeSeq = \exprs: [flow] -> {
+        fold(exprs[1], exprs[0], \x, y -> SeqExec(x, y));
+    };
+
+    makeInd = \exprs: [flow] -> {
+        IndExec(concat([exprs[0]], exprs[1]));
+    };
+
+    makeSeqD = \exprs: [flow] -> {
+        fold(exprs[1], exprs[0], \x, y -> SeqExecD(x, y));
+    };
+
+    makeIndD = \exprs: [flow] -> {
+        fold(exprs[1], exprs[0], \x, y -> IndExecD(x, y));
+    };
+
+    makeOr = \exprs: [flow] -> {
+        fold(exprs[1], exprs[0], \x, y -> Or(x, y));
+    };
+
+    makeAnd = \exprs: [flow] -> {
+        fold(exprs[1], exprs[0], \x, y -> And(x, y));
+    };
+
+    makeCompare = \progline: [flow] -> {
+        if (progline[2] == "<") {
+            CompareString(progline[0], progline[1], LessOp());
+        } else if (progline[2] == "<=") {
+            CompareString(progline[0], progline[1], LessOrEqualOp());
+        } else if (progline[2] == ">") {
+            CompareString(progline[0], progline[1], MoreOp());
+        } else if (progline[2] == ">=") {
+            CompareString(progline[0], progline[1], MoreOrEqualOp());
+        } else if (progline[2] == "=") {
+            CompareString(progline[0], progline[1], EqualOp());
+        } else if (progline[2] == "!=") {
+            CompareString(progline[0], progline[1], NotEqualOp());
+        } else {
+            CompareString(progline[0], progline[1], InvalidOp());
+        }
+    }
+
+    my_grammar : string = "#include labs/lab11-12.lingo";
+    parsic(
+        compilePegGrammar(my_grammar),
+        str,
+        pegActions([
+            Pair("makeAnd", makeAnd),
+            Pair("makeOr", makeOr),
+            Pair("makeMult", makeMult),
+            Pair("makeSum", makeSum),
+            Pair("makeInd", makeInd),
+            Pair("makeIndD",makeIndD),
+            Pair("makeSeqD",makeSeqD),
+            Pair("makeSeq", makeSeq),
+            Pair("makeCompare", makeCompare),
+            Pair("makeSub", makeSub),
+            Pair("makeDiv", makeDiv)
+        ]));
+}
+
+// expression calculation
+
+isPositive(value: Rat) -> bool {
+    isign(value.numerator) * isign(value.denominator) > 0 || value == PLUS_INF;
+}
+
+isNegative(value: Rat) -> bool {
+    isign(value.numerator) * isign(value.denominator) < 0 || value == MINUS_INF;
+}
+
+isOne(value: Rat) -> bool {
+    if (value == NAN || value.numerator != value.denominator) {
+        false;
+    } else {
+        true;
+    }
+}
+
+isZero(value: Rat) -> bool {
+    if (value.numerator == 0 && value.denominator != 0) {
+        true;
+    } else {
+        false;
+    }
+}
+
+isPlusInf(value: Rat) -> bool {
+    if (value.denominator == 0 && value.numerator > 0) {
+        true;
+    } else {
+        false;
+    }
+}
+
+isMinusInf(value: Rat) -> bool {
+    if (value.numerator < 0 && value.denominator == 0) {
+        true;
+    } else {
+        false;
+    }
+}
+
+createRat(numerator: int, denominator: int) -> Rat {
+    GCD = gcd(iabs(numerator), iabs(denominator));
+    Rat(isign(numerator) * isign(denominator) * iabs(numerator) / GCD, iabs(denominator) / GCD);
+}
+
+sumRat(left: Rat, right: Rat) -> Rat {
+    if (left == NAN || right == NAN) {
+        NAN;
+    } else if (
+        isPlusInf(left) && isMinusInf(right) ||
+        isMinusInf(left) && isPlusInf(right)
+    ) {
+        NAN;
+    } else if (isPlusInf(left) || isPlusInf(right)) {
+        PLUS_INF;
+    } else if (isMinusInf(left) || isMinusInf(right)) {
+        MINUS_INF;
+    } else {
+        createRat(
+            left.numerator * right.denominator + right.numerator * left.denominator, 
+            left.denominator * right.denominator 
+        );
+    }
+}
+
+subRat(left: Rat, right: Rat) -> Rat {
+    sumRat(left, Rat(-right.numerator, right.denominator));
+}
+
+mulRat(left: Rat, right: Rat) -> Rat {
+    if (left == NAN || right == NAN) {
+        NAN;
+    } else if (
+        isPlusInf(left) && isPositive(right) ||
+        isMinusInf(left) && isNegative(right) ||
+        isPlusInf(right) && isPositive(left) ||
+        isMinusInf(right) && isNegative(left)
+    ) {
+        PLUS_INF;
+    } else if (
+        isPlusInf(left) && isNegative(right) ||
+        isMinusInf(left) && isPositive(right) ||
+        isPlusInf(right) && isNegative(left) ||
+        isMinusInf(right) && isPositive(left)
+    ) {
+        MINUS_INF;
+    } else if (
+        (isPlusInf(left) || isMinusInf(left)) && right.numerator == 0 ||
+        (isPlusInf(right) || isMinusInf(right)) && left.numerator == 0
+    ) {
+        NAN;
+    } else {
+        createRat(
+            left.numerator * right.numerator,
+            left.denominator * right.denominator
+        );
+    }
+}
+
+divRat(left: Rat, right: Rat) -> Rat {
+    if (left.denominator != 0 && isZero(right)) {
+        if (isPositive(left)) {
+            PLUS_INF;
+        } else if (left.numerator == 0) {
+            NAN;
+        } else {
+            MINUS_INF;
+        }
+    } else if (isZero(left) && right.denominator != 0) {
+        Rat(0, 1);
+    } else if (left == NAN || right == NAN) {
+        NAN;
+    } else {
+        mulRat(left, Rat(right.denominator, right.numerator));
+    }
+}
+
+varValue2VarType(val: VarValue) -> VarType {
+    switch(val) {
+        Number(body): Num();
+        ArrNumber(body): ArrNum(varValue2VarType(getTreeValues(body)[0]));
+    }
+}
+
+value2VarValue(value: Value, state: State) -> Maybe<VarValue> {
+    switch(value) {
+        ValueArr(body): {
+            switch(body) {
+                ValueEmpty(): Some(ArrNumber(makeTree()));
+                default: {
+                    arrValue = value2VarValue(body, state);
+                    switch(arrValue) {
+                        Some(x): Some(ArrNumber(makeTree1(0, x)));
+                        None(): arrValue;
+                    }
+                }
+            }
+        }
+        ValueExpr(body): Some(computeExpr(body, ref state));
+        ValueEmpty(): None();
+    }
+}
+
+computeExpr(expr: Expr, state: ref State) -> VarValue {
+    switch(expr) {
+        Int(value): Number(Rat(value, 1));
+        Const(value): Number(value);
+        Var(name): {
+            switch(lookupTree(^state.memoryState.vars, name)) {
+                Some(x): x.value;
+                None(): {
+                    print("Invlid expression error. State level: ");
+                    println(^state.nextLabel);
+                    state := State(^state.memoryState, -1);
+                    Number(Rat(0, 0));
+                }
+            }
+        }
+        Neg(value): {
+            val: VarValue = computeExpr(value, state);
+
+            switch(val) {
+                Number(body): Number(mulRat(Rat(-1, 1), body));
+                ArrNumber(body): {
+                    print("Invlid operation on array. State level: ");
+                    println(^state.nextLabel);
+                    state := State(^state.memoryState, -1);
+                    Number(Rat(0, 0));
+                }
+            }
+        }
+        Binary(left, right, operation): {
+            lValue: VarValue = computeExpr(left, state);
+            rValue: VarValue = computeExpr(right, state);
+
+            switch(lValue) {
+                Number(body):
+                    if (isSameStructType(lValue, rValue)) {
+                        switch(operation) {
+                            SumOp(): Number(sumRat(body, rValue.body));
+                            SubOp(): Number(subRat(body, rValue.body));
+                            MulOp(): Number(mulRat(body, rValue.body));
+                            DivOp(): Number(divRat(body, rValue.body));
+                        }
+                    } else {
+                        print("Invlid operation on array. State level: ");
+                        println(^state.nextLabel);
+                        state := State(^state.memoryState, -1);
+                        Number(Rat(0, 0));
+                    }
+                ArrNumber(body): {
+                    print("Invlid operation on array. State level: ");
+                    println(^state.nextLabel);
+                    state := State(^state.memoryState, -1);
+                    Number(Rat(0, 0));
+                }
+            }
+        }
+        ValueArr(body): {
+            varValue = value2VarValue(expr, ^state);
+            switch(varValue) {
+                Some(x): x;
+                None(): {
+                    print("Invlid value in array. State level: ");
+                    println(^state.nextLabel);
+                    state := State(^state.memoryState, -1);
+                    Number(Rat(0, 0));
+                }
+            }
+        }
+        ValueExpr(body): computeExpr(body, state);
+        ArrayAccess(arr, index): {
+            val: VarValue = computeExpr(arr, state);
+
+            switch(val) {
+                Number(body): {
+                    print("Invalid operation on number. State level: ");
+                    println(^state.nextLabel);
+                    state := State(^state.memoryState, -1);
+                    Number(Rat(0, 0));
+                }
+                ArrNumber(body):
+                    switch (lookupTree(body, index)) {
+                        Some(x): x;
+                        None(): {
+                            print("Invalid index. State level: ");
+                            println(^state.nextLabel);
+                            state := State(^state.memoryState, -1);
+                            Number(Rat(0, 0));
+                        }
+                    }
+            }
+        }
+        ArrayUpdate(arr, index, value): {
+            val: VarValue = computeExpr(arr, state);
+
+            switch(val) {
+                Number(body): {
+                    print("Invalid operation on number. State level: ");
+                    println(^state.nextLabel);
+                    state := State(^state.memoryState, -1);
+                    Number(Rat(0, 0));
+                }
+                ArrNumber(body): {
+                    newVal: VarValue = computeExpr(value, state);
+
+                    if (compareTypes(varValue2VarType(val), ArrNum(varValue2VarType(newVal)))) {
+                        ArrNumber(setTree(body, index, newVal));
+                    } else {
+                        print("Invalid type in array update: ");
+                        println(^state.nextLabel);
+                        state := State(MemoryState(makeTree()), -1);
+                        Number(Rat(0, 0));
+                    }
+                }
+            }
+        }
+        ValueEmpty(): {
+            println("Invalid op");
+            state := State(^state.memoryState, -1);
+            Number(Rat(0, 0));
+        }
+    }
+}
+
+computeBoolExpr(cmpExpr: CompareExpression, state: ref State) -> bool {
+    switch (cmpExpr) {
+        Or(left, right): {
+            computeBoolExpr(left, state) || computeBoolExpr(right, state);
+        }
+        And(left, right): {
+            computeBoolExpr(left, state) && computeBoolExpr(right, state);
+        }
+        Not(body): {
+            !computeBoolExpr(body, state);
+        }
+        CompareString(left, right, op): {
+            leftValue = computeExpr(left, state);
+            rightValue = computeExpr(right, state);
+
+            switch(leftValue) {
+                Number(body): {
+                    if (isSameStructType(leftValue, rightValue)) {
+                        switch(op) {
+                            LessOp(): leftValue.body < rightValue.body;
+                            LessOrEqualOp(): leftValue.body <= rightValue.body;
+                            MoreOp(): leftValue.body > rightValue.body;
+                            MoreOrEqualOp(): leftValue.body >= rightValue.body;
+                            EqualOp(): leftValue.body == rightValue.body;
+                            NotEqualOp(): leftValue.body != rightValue.body;
+                            InvalidOp(): {
+                                println("Invalid bool op");
+                                state := State(^state.memoryState, -1);
+                                false;
+                            }
+                        }
+                    } else {
+                        println("Can not compare int and array of int");
+                        state := State(^state.memoryState, -1);
+                        false;
+                    }
+                }
+                ArrNumber(body): {
+                    println("Can not compare arrays");
+                    state := State(^state.memoryState, -1);
+                    false;
+                }
+            }
+        }
+    }
+}
+
+// execution
+
+getInitVar(varType: VarType) -> VarValue {
+    switch (varType) {
+        Num(): Number(Rat(0, 1));
+        ArrNum(body): ArrNumber(makeTree());
+    }
+}
+
+makeInitState(declareVars: Declaration) -> Set<State> {
+    switch(declareVars: Declaration) {
+        SeqExecD(left, right): {
+            leftStateSet = makeInitState(left);
+            rightStateSet = makeInitState(right);
+
+            mapSet(leftStateSet, \left_state -> State(
+                MemoryState(
+                    foldSet(rightStateSet, makeTree(), \acc, right_state -> {
+                    mergeTree(acc, mergeTree(left_state.memoryState.vars, right_state.memoryState.vars));
+                })),
+                1
+            ))
+        }
+        IndExecD(left, right): {
+            leftStateSet = makeInitState(left);
+            rightStateSet = makeInitState(right);
+
+            mergeSets(leftStateSet, rightStateSet);
+        }
+        Definition(name, type): {
+            makeSet1(
+                State(
+                    MemoryState(
+                        makeTree1(name, InitVar(getInitVar(type), type))
+                    ),
+                    1
+                )
+            );
+        }
+        EmptyD(): makeSet();
+    }
+}
+
+compareTypes(varType1: VarType, varType2: VarType) -> bool {
+    switch (varType1) {
+        Num(): isSameStructType(varType1, varType2);
+        ArrNum(body): {
+            if (isSameStructType(varType1, varType2)) {
+                compareTypes(body, varType2.body);
+            } else {
+                false;
+            }
+        }
+    }
+}
+
+executeAssign(left: Var, right: Expr, state: Set<State>) -> Set<State> {
+    mapSet(state, \s -> {
+        initVarMaybe = lookupTree(s.memoryState.vars, left.name);
+        switch(initVarMaybe) {
+            Some(x): {
+                s1 = ref s;
+                cmpExpr = computeExpr(right, s1);
+                if (^s1.nextLabel >= 0) {
+                    if (compareTypes(x.type, varValue2VarType(cmpExpr))) {
+                        State(
+                            MemoryState(
+                                setTree(^s1.memoryState.vars, left.name, 
+                                InitVar(cmpExpr, x.type))
+                            ),
+                            ^s1.nextLabel + 1
+                        )
+                    } else {
+                        print("Invalid var type in state level: ");
+                        println(^s1.nextLabel);
+                        State(MemoryState(makeTree()), -1);
+                    }
+                } else {
+                    State(MemoryState(makeTree()), -1);
+                }
+            }
+            None(): {
+                print("Invalid var name in state level: ");
+                println(s.nextLabel);
+                State(MemoryState(makeTree()), -1);
+            }
+        }
+    });
+}
+
+executePrint(arg: Var, state: Set<State>) -> Set<State> {
+    mapSet(state, \s -> {
+        initVarMaybe = lookupTree(s.memoryState.vars, arg.name);
+        switch(initVarMaybe) {
+            Some(x): {
+                print(arg.name);
+                print(" = ");
+                println(x);
+
+                s;
+            }
+            None(): {
+                print("Invalid var name in state level: ");
+                println(s.nextLabel);
+                
+                State(MemoryState(makeTree()), -1);
+            }
+        }
+    });
+}
+
+executeTest(body: CompareExpression, state: Set<State>) -> Set<State> {
+    mapSet(state, \s -> {
+        if (computeBoolExpr(body, ref s)) {
+            s;
+        } else {
+            print("Test failed in state level: ");
+            println(s.nextLabel);
+
+            State(MemoryState(makeTree()), -1);
+        }
+    });
+}
+
+getValidStates(currStates: Set<State>) -> Set<State> {
+    filterSet(currStates, \s -> s.nextLabel > 0);
+}
+
+executeCommands(commands: [StatementVM], curr_command: int, state: Set<State>) -> Set<State> {
+    validStates = getValidStates(state);
+
+    if (isEmptySet(validStates) || curr_command >= length(commands)) {
+        validStates;
+    } else {
+        switch(commands[curr_command]) {
+            AssignVM(left, right, nextLabel): {
+                updValidStates = mapSet(validStates, \s -> State(s.memoryState, nextLabel));
+                executeCommands(commands, nextLabel, executeAssign(left, right, updValidStates));
+            }
+            TestVM(body, nextLabel): {
+                updValidStates = mapSet(validStates, \s -> State(s.memoryState, nextLabel));
+                executeCommands(commands, nextLabel, executeTest(body, updValidStates));
+            }
+            PrintVM(arg, nextLabel): {
+                updValidStates = mapSet(validStates, \s -> State(s.memoryState, nextLabel));
+                executeCommands(commands, nextLabel, executePrint(arg, updValidStates));
+            }
+            GotoVM(label):
+                mergeSetsA(fold(label, [], \acc, l -> {
+                    updValidStates = mapSet(validStates, \s -> State(s.memoryState, l));
+                    arrayPush(acc, executeCommands(commands, l, updValidStates));
+            }));
+        }
+    }
+}
+
+makeAST_Tree(commands: Execution) -> [StatementVM] {
+    switch(commands) {
+        // execution
+        SeqExec(left, right): {
+            left_commands = makeAST_Tree(left);
+            label = length(left_commands);
+            concat(
+                left_commands, 
+                map(makeAST_Tree(right), \i -> {
+                    switch(i) {
+                        AssignVM(l, r, nextLabel): AssignVM(l, r, nextLabel + label);
+                        TestVM(body, nextLabel): TestVM(body, nextLabel + label);
+                        PrintVM(arg, nextLabel): PrintVM(arg, nextLabel + label);
+                        GotoVM(l): GotoVM(map(l, \i1 -> label + i1));
+                    }
+                })
+            );
+        }
+        IndExec(body): {
+            res_len = fold(body, 0, \acc, i -> acc + length(makeAST_Tree(i))) + 1;
+
+            gotoSet = ref [];
+            ind_body = fold(body, [], \acc, i -> {
+                acc_len = length(acc);
+                part = makeAST_Tree(i);
+                gotoSet := arrayPush(^gotoSet, acc_len + 1);
+                concat(
+                    acc,
+                    fold(part, [], \sub_acc, sub_i -> arrayPush(sub_acc, {
+                        if (length(part) - 1 == length(sub_acc)) {
+                            switch(sub_i) {
+                                AssignVM(l, r, nextLabel): AssignVM(l, r, res_len);
+                                TestVM(b, nextLabel): TestVM(b, res_len);
+                                PrintVM(arg, nextLabel): PrintVM(arg, res_len);
+                                GotoVM(label): GotoVM([res_len]);
+                            }
+                        } else {
+                            switch(sub_i) {
+                                AssignVM(l, r, nextLabel): AssignVM(l, r, nextLabel + acc_len + 1);
+                                TestVM(b, nextLabel): TestVM(b, nextLabel + acc_len + 1);
+                                PrintVM(arg, nextLabel): PrintVM(arg, nextLabel + acc_len + 1);
+                                GotoVM(l): GotoVM(map(l, \i1 -> i1 + acc_len + 1));
+                            }
+                        }
+                    }))
+                );
+            });
+
+            concat([GotoVM(^gotoSet)], ind_body);
+        }
+        // statement
+        Assign(left, right): [AssignVM(left, right, 1)];
+        Print(arg): [PrintVM(arg, 1)];
+        Test(body): [TestVM(body, 1)];
+        Iteration(body): {
+            ast_body = map(makeAST_Tree(body), \i -> 
+                switch(i) {
+                    AssignVM(l, r, nextLabel): AssignVM(l, r, nextLabel + 1);
+                    TestVM(b, nextLabel): TestVM(b, nextLabel + 1);
+                    PrintVM(arg, nextLabel): PrintVM(arg, nextLabel + 1);
+                    GotoVM(l): GotoVM(map(l, \i1 -> i1 + 1));
+                }
+            );
+            res = concat(
+                [GotoVM([1, length(ast_body) + 2])],
+                ast_body
+            );
+
+            arrayPush(res, GotoVM([0]));
+        };
+        Empty(): [];
+        default: {
+            println("Invalid command");
+            quit(-1);
+            [];
+        }
+    }
+}
+
+printState(state: Set<State>) {
+    println("States: [");
+    iterSet(state, \s -> {
+        println(" {");
+        iter(tree2pairs(s.memoryState.vars), \p -> println("  " + toString(p.first) + " = " + toString(p.second)));
+        println("  next state " + toString(s.nextLabel));
+        println(" },");
+    });
+    println("]");
+}
+
+execute(program: Program) {
+    initState = makeInitState(program.declare);
+    println("\nMAKE INIT STATE\n");
+    printState(initState);
+
+    commands = makeAST_Tree(program.body);
+    println(commands);
+    println(length(commands));
+
+    println("\nSTART EXECUTE\n");
+    finalStates = executeCommands(commands, 0, initState);
+
+    println("\nFINISH ALL STATETS\n");
+    printState(finalStates);
+
+    if (isEmptySet(finalStates)) {
+        quit(-1);
+    } else {
+        quit(0);
+    }
+}
+
+// main
+
+main() {
+    prog_str = getFileContentBinary("program.nemo");
+    program = str2program(prog_str);
+
+    execute(program);
+}

@@ -1,0 +1,10 @@
+expr = sum | mul | num;
+
+//mult = num:n1 '*' num:n2 { Mult(:n1, :n2) };
+//sum = num:n1 '+' num:n2 { Sum(:n1, :n2) };
+sum = mul:n1 spaces '+' spaces sum:n2 { Sum(:n1, :n2) } | mul;
+mul = atom:n1 spaces '*' spaces mul:n2 { Mult(:n1, :n2) } | atom;
+atom = num | '(' expr:e ')' { :e };
+num = digit+ $s { Const(s2i($s)) };
+digit = '0' - '9';
+spaces = ' '*;

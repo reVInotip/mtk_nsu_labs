@@ -1,0 +1,48 @@
+import string;
+import lingo/pegcode/driver;
+
+Exp ::= Sum, Mult, Const;
+  Sum(left : Exp, rigth : Exp);
+  Mult(left : Exp, rigth : Exp);
+  Const(val : int);
+
+str2exp(str : string) -> Exp {
+  my_grammar : string = "#include labs/lab5.lingo";
+  parsic(compilePegGrammar(my_grammar), str, defaultPegActions);
+}
+
+exp2str(exp : Exp, is_mul : bool) -> string {
+  switch (exp) {
+    Sum(left, rigth):
+      if (is_mul) {
+        "(" + exp2str(left, false) + " + " + exp2str(rigth, false) + ")";
+      } else {
+        exp2str(left, false) + " + " + exp2str(rigth, false);
+      }
+    Mult(left, rigth): exp2str(left, true) + " * " + exp2str(rigth, true);
+    Const(val): i2s(val);
+  }
+}
+
+calcExp(exp : Exp) -> int {
+  switch(exp) {
+    Sum(left, rigth): calcExp(left) + calcExp(rigth);
+    Mult(left, rigth): calcExp(left) * calcExp(rigth);
+    Const(val): val;
+  }
+}
+
+main() {
+  str = "2 + 2 + 2 + 2 + 2";
+  exp = str2exp(str);
+  println(exp);
+  println("String to expression:");
+  println(exp);
+
+  println("Expression to string:");
+  println(exp2str(exp, false));
+
+  println("Result:");
+  result = i2s(calcExp(exp));
+  println(result);
+}

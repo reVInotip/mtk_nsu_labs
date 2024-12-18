@@ -1,0 +1,37 @@
+import ds/array;
+import string;
+
+fib(a: int) -> [int] {
+	if (a == 0) {
+		[];
+	} else if (a == 1) {
+		[0];
+	} else if (a == 2) {
+		[0, 1];
+	} else {
+		r = fib(a - 1);
+		arrayPush(r, r[a - 2] + r[a - 3]);
+	}
+}
+
+fibTail(a: int, l: int, arr: [int]) -> [int] {
+	if (l == a) {
+		arr;
+	} else {
+		fibTail(a, l + 1, arrayPush(arr, arr[l - 1] + arr[l - 2]))
+	}
+}
+
+fibR(a: int) -> [int] {
+	if (a == 0) {
+		[];
+	} else if (a == 1) {
+		[1];
+	} else {
+		fibTail(a, 2, [1, 1]);
+	}
+}
+
+main() {
+	println(fibR(10));
+}

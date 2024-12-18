@@ -1,0 +1,12 @@
+expr = sum | sub | mul | div | var | negRat | rat;
+
+sum = mul:n1 (spaces '+' spaces mul)+:n2 { Sum(:n1, :n2) } | sub | mul | div;
+sub = mul:n1 (spaces '-' spaces mul)+:n2 { Sub(:n1, :n2) } | mul | div;
+mul = atom:n1 (spaces '*' spaces atom)+:n2 { Mult(:n1, :n2) } | div | atom;
+div = atom:n1 (spaces '/' spaces atom)+:n2 { Div(:n1, :n2) } | atom;
+atom = var | negRat | rat |'(' expr:e ')' { :e };
+negRat = '(' spaces '-' spaces rat:e spaces ')' { Neg(:e) } | spaces '-' rat:e spaces { Neg(:e) };
+rat = (digit+) $n1 spaces '/' spaces (digit+) $n2 { Rat(s2i(:n1), s2i(:n2)) } | digit+ $s { Rat(s2i($s), 1) };
+var = ('a' - 'z') $s { Var($s)};
+digit = '0' - '9';
+spaces = ' '*;

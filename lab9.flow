@@ -1,0 +1,413 @@
+import string;
+import lingo/pegcode/driver;
+import ds/tree;
+import math/math;
+
+Rat:(numerator: int, denominator: int);
+
+NAN = Rat(0, 0);
+
+PLUS_INF = Rat(1, 0);
+
+MINUS_INF = Rat(-1, 0);
+
+
+RatFunction: (numerator: Expr, denominator: Expr);
+
+BinOperations ::= SumOp, SubOp, MulOp, DivOp;
+    SumOp: ();
+    SubOp: ();
+    MulOp: ();
+    DivOp: ();
+
+Expr ::= Const, Int, Var, Neg, Binary;
+    Int: (value: int);
+    Const: (value: Rat);
+    Var: (name: string);
+    Neg: (expr: Expr);
+    Binary: (left: Expr, right: Expr, operation: BinOperations);
+
+simplifySum(left: Expr, right: Expr) -> Expr {
+    lValue: Rat = computeExpr(left);
+    rValue: Rat = computeExpr(right);
+
+    if (lValue != NAN && rValue != NAN) {
+        Const(sumRat(lValue, rValue));
+    } else if (isZero(lValue) && isZero(rValue)) {
+        Int(0);
+    } else if (isZero(lValue)) {
+        right;
+    } else if (isZero(rValue)) {
+        left;
+    } else if (left == Neg(right) || right == Neg(left)) {
+        Int(0);
+    } else {
+        Sum(left, right);
+    }
+}
+
+simplifySub(left: Expr, right: Expr) -> Expr {
+    lValue: Rat = computeExpr(left);
+    rValue: Rat = computeExpr(right);
+
+    if (lValue != NAN && rValue != NAN) {
+        Const(subRat(lValue, rValue));
+    } else if (isZero(lValue) && isZero(rValue)) {
+        Int(0);
+    } else if (isZero(lValue)) {
+        Neg(right);
+    } else if (isZero(rValue)) {
+        left;
+    } else if (left == right) {
+        Int(0);
+    } else {
+        Sub(left, right);
+    }
+}
+
+simplifyMul(left: Expr, right: Expr) -> Expr {
+    lValue: Rat = computeExpr(left);
+    rValue: Rat = computeExpr(right);
+
+    if (lValue != NAN && rValue != NAN) {
+        Const(mulRat(lValue, rValue));
+    } else if (isZero(lValue) || isZero(rValue)) {
+        Int(0);
+    } else if (isOne(rValue)) {
+        left;
+    } else if (isOne(lValue)) {
+        right;
+    } else {
+        Mul(left, right);
+    }
+}
+
+simplifyDiv(left: Expr, right: Expr) -> Expr {
+    lValue: Rat = computeExpr(left);
+    rValue: Rat = computeExpr(right);
+
+    if (lValue != NAN && rValue != NAN) {
+        Const(divRat(lValue, rValue));
+    } else if (isOne(rValue)) {
+        left;
+    } else if (isZero(lValue)) {
+        Int(0);
+    } else {
+        Div(left, right);
+    }
+}
+
+simplifyBinary(left: Expr, right: Expr, operation: BinOperations) -> Expr {
+    switch(operation) {
+        SumOp(): simplifySum(left, right);
+        SubOp(): simplifySub(left, right);
+        MulOp(): simplifyMul(left, right);
+        DivOp(): simplifyDiv(left, right);
+    };
+}
+
+simplifyNeg(exp: Expr) -> Expr {
+    value: Rat = computeExpr(exp);
+
+    if (value != NAN) {
+        Const(mulRat(Rat(-1, 1), value));
+    } else {
+        Neg(exp);
+    }
+}
+
+simplify(exp: Expr) -> Expr {
+    switch(exp) {
+        Neg(value): simplifyNeg(value);
+        Binary(left, right, operation): {
+            leftSimple: Expr = simplify(left);
+            rightSimple: Expr = simplify(right);
+            simplifyBinary(leftSimple, rightSimple, operation);
+        }
+        default: exp;
+    }
+}
+
+isPositive(value: Rat) -> bool {
+    isign(value.numerator) * isign(value.denominator) > 0 || value == PLUS_INF;
+}
+
+isNegative(value: Rat) -> bool {
+    isign(value.numerator) * isign(value.denominator) < 0 || value == MINUS_INF;
+}
+
+isOne(value: Rat) -> bool {
+    if (value == NAN || value.numerator != value.denominator) {
+        false;
+    } else {
+        true;
+    }
+}
+
+isZero(value: Rat) -> bool {
+    if (value.numerator == 0 && value.denominator != 0) {
+        true;
+    } else {
+        false;
+    }
+}
+
+isPlusInf(value: Rat) -> bool {
+    if (value.denominator == 0 && value.numerator > 0) {
+        true;
+    } else {
+        false;
+    }
+}
+
+isMinusInf(value: Rat) -> bool {
+    if (value.numerator < 0 && value.denominator == 0) {
+        true;
+    } else {
+        false;
+    }
+}
+
+createRat(numerator: int, denominator: int) -> Rat {
+    GCD = gcd(iabs(numerator), iabs(denominator));
+    Rat(isign(numerator) * isign(denominator) * iabs(numerator) / GCD, iabs(denominator) / GCD);
+}
+
+sumRat(left: Rat, right: Rat) -> Rat {
+    if (left == NAN || right == NAN) {
+        NAN;
+    } else if (
+        isPlusInf(left) && isMinusInf(right) ||
+        isMinusInf(left) && isPlusInf(right)
+    ) {
+        NAN;
+    } else if (isPlusInf(left) || isPlusInf(right)) {
+        PLUS_INF;
+    } else if (isMinusInf(left) || isMinusInf(right)) {
+        MINUS_INF;
+    } else {
+        createRat(
+            left.numerator * right.denominator + right.numerator * left.denominator, 
+            left.denominator * right.denominator 
+        );
+    }
+}
+
+subRat(left: Rat, right: Rat) -> Rat {
+    sumRat(left, Rat(-right.numerator, right.denominator));
+}
+
+mulRat(left: Rat, right: Rat) -> Rat {
+    if (left == NAN || right == NAN) {
+        NAN;
+    } else if (
+        isPlusInf(left) && isPositive(right) ||
+        isMinusInf(left) && isNegative(right) ||
+        isPlusInf(right) && isPositive(left) ||
+        isMinusInf(right) && isNegative(left)
+    ) {
+        PLUS_INF;
+    } else if (
+        isPlusInf(left) && isNegative(right) ||
+        isMinusInf(left) && isPositive(right) ||
+        isPlusInf(right) && isNegative(left) ||
+        isMinusInf(right) && isPositive(left)
+    ) {
+        MINUS_INF;
+    } else if (
+        (isPlusInf(left) || isMinusInf(left)) && right.numerator == 0 ||
+        (isPlusInf(right) || isMinusInf(right)) && left.numerator == 0
+    ) {
+        NAN;
+    } else {
+        createRat(
+            left.numerator * right.numerator,
+            left.denominator * right.denominator
+        );
+    }
+}
+
+divRat(left: Rat, right: Rat) -> Rat {
+    if (left.denominator != 0 && isZero(right)) {
+        if (isPositive(left)) {
+            PLUS_INF;
+        } else if (left.numerator == 0) {
+            NAN;
+        } else {
+            MINUS_INF;
+        }
+    } else if (isZero(left) && right.denominator != 0) {
+        Rat(0, 1);
+    } else if (left == NAN || right == NAN) {
+        NAN;
+    } else {
+        mulRat(left, Rat(right.denominator, right.numerator));
+    }
+}
+
+rat2str(value: Rat) -> string {
+    if (isPlusInf(value)) {
+        "(+inf)";
+    } else if (isMinusInf(value)) {
+        "(-inf)";
+    } else if (value == NAN) {
+        "nan";
+    } else if (value.denominator == 1) {
+        if (value.numerator < 0) {
+            "(" + i2s(value.numerator) + ")";
+        } else {
+            i2s(value.numerator);
+        }
+    } else {
+        "(" + i2s(value.numerator) + "/" + i2s(value.denominator) + ")";
+    }
+}
+
+Sum(left: Expr, right: Expr) -> Expr {
+    Binary(left, right, SumOp());
+}
+
+Sub(left: Expr, right: Expr) -> Expr {
+    Binary(left, right, SubOp());
+}
+
+Mul(left: Expr, right: Expr) -> Expr {
+    Binary(left, right, MulOp());
+}
+
+Div(left: Expr, right: Expr) -> Expr {
+    Binary(left, right, DivOp());
+}
+
+expr2str(expr: Expr, is_mul: bool, is_div: bool) -> string {
+    switch(expr) {
+        Int(value): i2s(value);
+        Const(value): rat2str(value);
+        Var(name): name;
+        Neg(value): "(-" + expr2str(value, false, false) + ")";
+        Binary(left, right, op): {
+            switch(op) {
+                SumOp():
+                    if (is_mul || is_div) {
+                        "(" + expr2str(left, false, false) + " + " + expr2str(right, false, false) + ")";
+                    } else {
+                        expr2str(left, false, false) + " + " + expr2str(right, false, false);
+                    }
+                SubOp():
+                    if (is_mul || is_div) {
+                        "(" + expr2str(left, false, false) + " - " + expr2str(right, false, false) + ")";
+                    } else {
+                        expr2str(left, false, false) + " - " + expr2str(right, false, false);
+                    }
+                MulOp():
+                    if (is_div) {
+                        "(" + expr2str(left, true, false) + " * " + expr2str(right, true, false) + ")";
+                    } else {
+                        expr2str(left, true, false) + " * " + expr2str(right, true, false);
+                    }
+                DivOp(): expr2str(left, false, true) + " / " + expr2str(right, false, true);
+            };
+        }
+    }
+}
+
+computeExpr(expr: Expr) -> Rat {
+    switch(expr) {
+        Int(value): Rat(value, 1);
+        Const(value): value;
+        Var(name): NAN;
+        Neg(value): mulRat(Rat(-1, 1), computeExpr(value));
+        Binary(left, right, operation): {
+            lValue: Rat = computeExpr(left);
+            rValue: Rat = computeExpr(right);
+            switch(operation) {
+                SumOp(): sumRat(lValue, rValue);
+                SubOp(): subRat(lValue, rValue);
+                MulOp(): mulRat(lValue, rValue);
+                DivOp(): divRat(lValue, rValue);
+            };
+        }
+    }
+}
+
+str2expr(str: string) -> Expr {
+    makeSub = \exprs: [flow] -> {
+        fold(exprs[1], exprs[0], \acc, x -> Binary(acc, x, SubOp()));
+    };
+
+    makeDiv = \exprs: [flow] -> {
+        fold(exprs[1], exprs[0], \acc, x -> Binary(acc, x, DivOp()));
+    };
+
+    my_grammar : string = "#include labs/lab9.lingo";
+
+    parsic(
+        compilePegGrammar(my_grammar),
+        str,
+        SemanticActions(
+            setTree(
+                setTree(
+                    defaultPegActions.t,
+                    "makeSub",
+                    makeSub
+                ),
+                "makeDiv",
+                makeDiv
+            )
+        )
+    );
+}
+
+expr2ratFunction(exp: Expr) -> RatFunction {
+    tmp = switch(exp) {
+        Binary(left, right, operation): {
+            leftFoo = expr2ratFunction(left);
+            rightFoo = expr2ratFunction(right);
+            switch(operation) {
+                SumOp(): RatFunction(
+                    simplifySum(
+                        simplifyMul(leftFoo.numerator, rightFoo.denominator), 
+                        simplifyMul(rightFoo.numerator, leftFoo.denominator)
+                    ),
+                    simplifyMul(leftFoo.denominator, rightFoo.denominator)
+                );
+
+                SubOp(): RatFunction(
+                    simplifySub(
+                        simplifyMul(leftFoo.numerator, rightFoo.denominator), 
+                        simplifyMul(rightFoo.numerator, leftFoo.denominator)
+                    ), 
+                    simplifyMul(leftFoo.denominator, rightFoo.denominator)
+                );
+
+                MulOp(): RatFunction(
+                    simplifyMul(leftFoo.numerator, rightFoo.numerator), 
+                    simplifyMul(leftFoo.denominator, rightFoo.denominator)
+                );
+
+                DivOp(): RatFunction(
+                    simplifyMul(leftFoo.numerator, rightFoo.denominator), 
+                    simplifyMul(leftFoo.denominator, rightFoo.numerator)
+                );
+            };
+        };
+        default: RatFunction(exp, Int(1));
+    }
+
+    RatFunction(simplify(tmp.numerator), simplify(tmp.denominator));
+}
+
+ratFunction2str(foo: RatFunction) -> string {
+    "[" + expr2str(foo.numerator, false, false) + "]" + " / " + "[" + expr2str(foo.denominator, false, false) + "]";
+}
+
+main() {
+    str = " x + x + x + x";
+    expr = str2expr(str);
+    println(expr);
+
+    println(expr2str(expr, false, false));
+
+    foo = expr2ratFunction(expr);
+    println(ratFunction2str(foo));
+}

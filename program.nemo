@@ -1,0 +1,22 @@
+var v: int;
+var x: [int]
+{
+    v := 15;
+
+    {
+        v < 16 ?;
+        v := v + 1
+    } *;
+    
+    print(v);
+
+    {
+        x := [5];
+        print(x)
+    } U
+    {
+        x := [5];
+        v := ACC(UPD(x, 1, 6 + 1), 1);
+        print(v)
+    }
+}

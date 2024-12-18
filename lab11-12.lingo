@@ -1,0 +1,75 @@
+program = ws declareString:i ws '{' ws execString:c ws '}' ws {Program(:i, :c)};
+
+execString = seqExec | indExec | ws {Empty()};
+seqExec = indExec:n1 (ws ';' ws indExec)+:n2 {makeSeq(:n1, :n2)} | indExec;
+indExec = execAtom:n1 (ws 'U' ws execAtom)+:n2 {makeInd(:n1, :n2)} | execAtom;
+
+execAtom = ws execCommand:c ws {:c} | ws '{' ws execString:e ws '}' ws {:e};
+
+execCommand = ws varName:s1 ws assign ws expr:s2 ws {Assign(:s1, :s2)} |
+    ws compareExpr:ce ws test ws {Test(:ce)} |
+    ws 'print' '(' ws varName:v ws ')' ws {Print(:v)} |
+    ws '{' ws execString:e ws '}' ws iter ws {Iteration(:e)};
+
+compareExpr = or | and | compareString;
+
+or = and:n1 (ws '||' ws and)+:n2 {makeOr(:n1, :n2)} | and;
+
+and = compareString:n1 (ws '&&' ws compareString)+:n2 {makeAnd(:n1, :n2)} | compareString;
+
+compareString = ws expr:left ws compareOperations $op ws expr:right ws {makeCompare(:left, :right, :op)} |
+                ws '!' ws '(' ws expr:left ws compareOperations $op ws expr:right ws ')' ws {Not(makeCompare(:left, :right, :op))} |
+                ws expr:left ws compareOperations $op ws expr:right ws {makeCompare(:left, :right, :op)} |
+                ws '(' ws compareExpr:exp ws ')' ws {:exp};
+
+declareString = seqDeclare | indDeclare | ws {EmptyD()};
+seqDeclare = indDeclare:n1 (ws ';' ws indDeclare)+:n2 {makeSeqD(:n1, :n2)} | indDeclare;
+indDeclare = declareAtom:n1 (ws 'U' ws declareAtom)+:n2 {makeIndD(:n1, :n2)} | declareAtom;
+
+declareAtom = ws variable:var ws {:var};
+
+variable = 'var ' ws name $n ws ': ' ws type:t {Definition(:n, :t)};
+
+name = (letter (letter | digit)*) $d {:d};
+type = ws 'int' ws {Num()} | ws '[' type:t ']' ws {ArrNum(:t)};
+assign = ':=';
+compareOperations = '<' | '>' | '<=' | '>=' | '!=' | '=';
+test = '?';
+iter = '*';
+num = digit+ $n {s2i(:n)};
+
+// ============ expression parser grammar ================
+
+wexpr = ws expr:e ws {:e};
+
+expr = sum | sub | mul | div | atom | varName;
+
+sum = mul:n1 (ws '+' ws mul)+:n2 { makeSum(:n1, :n2) } | sub;
+sub = mul:n1 (ws '-' ws mul)+:n2 { makeSub(:n1, :n2) } | mul;
+mul = atom:n1 (ws '*' ws atom)+:n2 { makeMult(:n1, :n2) } | div;
+div = atom:n1 (ws '/' ws atom)+:n2 { makeDiv(:n1, :n2) } | atom;
+
+atom = ws ('+' ws)* ws int:value ws {:value} |
+       ws '-' ws int:value ws {Neg(:value)} |
+
+       ws arrAccess '(' ws expr:v ws ',' ws num:i ws ')' ws {ArrayAccess(:v, :i)} |
+       ws arrUpdate '(' ws expr:v ws ',' ws num:i ws ',' ws expr:val ws ')' ws {ArrayUpdate(:v, :i, :val)} |
+
+       ws ('+' ws)* ws varName:value ws {:value} |
+       ws '-' ws varName:value ws {Neg(:value)} |
+
+       ws '[' value:val ']' ws {ValueArr(:val)} |
+
+       ws ('+' ws)* ws '(' wexpr:only ')' ws {:only} |
+       ws '-' ws '(' wexpr:only ')' ws {Neg(:only)};
+
+
+int = digit+ $d {Int(s2i($d))};
+varName = (letter (letter | digit)*) $d {Var(:d)};
+
+value = ws expr:n ws {ValueExpr(:n)} | ws '[' value:v ']' ws {ValueArr(:v)} | ws {ValueEmpty()};
+digit = '0' - '9';
+letter = ('a' - 'z' | 'A' - 'Z'); //without U
+ws = (' ' | '\t' | '\n')*;
+arrUpdate = 'UPD';
+arrAccess = 'ACC';

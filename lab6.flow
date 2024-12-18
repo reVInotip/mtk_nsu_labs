@@ -1,0 +1,159 @@
+import string;
+import lingo/pegcode/driver;
+import ds/list;
+
+Exp ::= myAct;
+  myAct(tokens: [Token]);
+Token ::= Sum, Mult, Const;
+  Sum();
+  Mult();
+  Const(val : int);
+
+pushToStack(stack : ref List<?>, token : ?) {
+  rlistPush(stack, token);
+}
+
+popFromStack(stack : ref List<?>) -> ? {
+  def : flow = 0;
+  token = headList(^stack, def);
+  stack := tailList(^stack);
+  token;
+}
+
+exp2TokenArr(exp : Exp) -> [Token] {
+  switch(exp) {
+    myAct(tokens): tokens;
+  }
+}
+
+str2exp(str : string) -> Exp {
+  my_grammar : string = "#include labs/lab6.lingo";
+  parsic(compilePegGrammar(my_grammar), str, defaultPegActions);
+}
+
+calculate(rpn_array : [Token], index : int, stack : ref List<int>) -> int {
+  if (index == length(rpn_array)) {
+    if (^stack == EmptyList()) {
+      println("Incorrect RPN expression");
+    }
+    popFromStack(stack);
+  } else {
+    switch(rpn_array[index]) {
+      Const(val): {
+        pushToStack(stack, val);
+        calculate(rpn_array, index + 1, stack);
+      }
+      Sum(): {
+        if (^stack == EmptyList()) {
+          println("Incorrect RPN expression");
+        }
+
+        left = popFromStack(stack);
+        if (^stack == EmptyList()) {
+          println("Incorrect RPN expression");
+        }
+
+        right = popFromStack(stack);
+        pushToStack(stack, left + right);
+        calculate(rpn_array, index + 1, stack);
+      }
+      Mult(): {
+        if (^stack == EmptyList()) {
+          println("Incorrect RPN expression");
+        }
+
+        left = popFromStack(stack);
+        if (^stack == EmptyList()) {
+          println("Incorrect RPN expression");
+        }
+
+        right = popFromStack(stack);
+        pushToStack(stack, left * right);
+        calculate(rpn_array, index + 1, stack);
+      }
+    }
+  }
+}
+
+RPN_to_std(rpn_array : [Token], index : int, stack : ref List<string>) -> string {
+  if (index == length(rpn_array)) {
+    if (^stack == EmptyList()) {
+      println("Incorrect RPN expression");
+    }
+    popFromStack(stack);
+  } else {
+    switch(rpn_array[index]) {
+      Const(val): {
+        pushToStack(stack, i2s(val));
+        RPN_to_std(rpn_array, index + 1, stack);
+      }
+      Sum(): {
+        if (^stack == EmptyList()) {
+          println("Incorrect RPN expression");
+        }
+
+        left = popFromStack(stack);
+        if (^stack == EmptyList()) {
+          println("Incorrect RPN expression");
+        }
+
+        right = popFromStack(stack);
+        pushToStack(stack, left + " + " + right);
+        RPN_to_std(rpn_array, index + 1, stack);
+      }
+      Mult(): {
+        if (^stack == EmptyList()) {
+          println("Incorrect RPN expression");
+        }
+
+        left = popFromStack(stack);
+        if (^stack == EmptyList()) {
+          println("Incorrect RPN expression");
+        }
+
+        right = popFromStack(stack);
+        if (strIndexOf(left, "+") == -1 && strIndexOf(right, "+") == -1) {
+          pushToStack(stack, left + " * " + right);
+        }
+        else if (strIndexOf(left, "+") > 0 && strIndexOf(right, "+") > 0) {
+          pushToStack(stack, "(" + left + ") * (" + right + ")");
+        } else if (strIndexOf(right, "+") > 0) {
+          pushToStack(stack, left + " * (" + right + ")");
+        } else {
+          pushToStack(stack, "(" + left + ") * " + right);
+        }
+        RPN_to_std(rpn_array, index + 1, stack);
+      }
+    }
+  }
+}
+
+RPN_calculate(rpn_array : [Token]) -> int {
+  stack : ref List<Token> = ref makeList();
+  result = calculate(rpn_array, 0, ref makeList());
+  if (^stack != EmptyList()) {
+    println("Incorrect RPN expression");
+  }
+
+  result;
+}
+
+RPN_to_std_string(rpn_array : [Token]) {
+  stack : ref List<string> = ref makeList();
+  std_string = RPN_to_std(rpn_array, 0, stack);
+  if (^stack != EmptyList()) {
+    println("Incorrect RPN expression");
+  }
+
+  std_string;
+}
+
+main() {
+  str = "2 2 + 2 2 + *";
+  exp = str2exp(str);
+  tokenArr = exp2TokenArr(exp);
+  println(tokenArr);
+
+  println(RPN_calculate(tokenArr));
+  println(RPN_to_std_string(tokenArr));
+}

@@ -1,0 +1,26 @@
+statement = ws expr:e ws {:e};
+
+expr = term:left subtractor*:middles ws '+' ws expr:right {Binary(makeSub(:left, :middles),:right, SumOp())} |
+                 term:left subtractor*:middles {makeSub(:left, :middles)};
+term = atom:left divider*:middles ws '*' ws term:right {Binary(makeDiv(:left, :middles),:right, MulOp())} | 
+                atom:left divider*:middles {makeDiv(:left, :middles)};
+
+divider = ws '/' ws atom:e {:e};
+subtractor = ws '-' ws term:e {:e};
+
+atom = ws ('+' ws)* ws int:value ws {:value} |
+       ws '-' ws int:value ws {Neg(:value)} |
+
+       ws ('+' ws)* ws name:value ws {:value} |
+       ws '-' ws name:value ws {Neg(:value)} |
+
+       ws ('+' ws)* ws '(' statement:only ')' ws {:only} |
+       ws '-' ws '(' statement:only ')' ws {Neg(:only)};
+
+
+int = digit+ $d {Int(s2i($d))};
+name = (letter (letter | digit)*) $d {Var(:d)};
+
+digit = '0' - '9';
+letter = ('a' - 'z' | 'A' - 'Z');
+ws = (' ' | '\t' | '\n')*;
